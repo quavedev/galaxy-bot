@@ -1,0 +1,59 @@
+{
+  "name": "@quave/galaxy-bot",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "NodeJS command line tool to monitor and auto-scale Meteor Galaxy",
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "galaxy-bot": "dist/index.js"
+  },
+  "scripts": {
+    "start": "nodemon --exec babel-node src/index.js --settings settings.json",
+    "start-us": "nodemon --exec babel-node src/index.js --settings settings-us.json",
+    "build": "rm -rf dist && babel src --out-dir dist",
+    "release": "yarn build && yarn version --patch && yarn publish",
+    "serve": "node dist/index.js --settings settings.json",
+    "test": "exit 0",
+    "quave-eslint": "eslint . --fix",
+    "quave-prettier": "prettier --write \"**/*.js\"",
+    "quave-check": "npm run quave-eslint && npm run quave-prettier"
+  },
+  "dependencies": {
+    "@babel/core": "^7.5.5",
+    "@babel/node": "^7.5.5",
+    "@babel/polyfill": "^7.4.4",
+    "@babel/preset-env": "^7.5.5",
+    "fs-extra": "^8.1.0",
+    "graphql-request": "^1.8.2",
+    "lodash.merge": "^4.6.2",
+    "request-promise": "^4.2.5",
+    "slack-notify": "^0.1.7",
+    "yargs": "^13.3.0"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.5.5",
+    "@quave/eslint-config-quave": "^1.0.1-beta.1",
+    "nodemon": "^1.19.1"
+  },
+  "eslintConfig": {
+    "extends": [
+      "@quave/quave"
+    ]
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "meteor npm test && lint-staged",
+      "post-commit": "git update-index --again"
+    }
+  },
+  "lint-staged": {
+    "*.js": [
+      "eslint --fix",
+      "prettier --write",
+      "git add"
+    ]
+  }
+}

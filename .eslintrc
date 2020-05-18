@@ -1,0 +1,15 @@
+{
+  "overrides": [
+    {
+      "parser": "babel-eslint",
+      "parserOptions": {
+        "allowImportExportEverywhere": true,
+        "sourceType": "module"
+      },
+      "files": ["**/*.js"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ]
+}
