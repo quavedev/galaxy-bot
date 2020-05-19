@@ -1,8 +1,5 @@
 import { getAppLink, METRICS } from './utilities';
-import { scaleApp } from './api';
-
-const MAX_CONTAINERS = 10;
-const MIN_CONTAINERS = 2;
+import { killContainer, scaleApp } from './api';
 
 const trySendAlertToSlack = (
   { appLink, msgTitle, lastMetric, channel, messagePrefix },
@@ -73,9 +70,14 @@ function checkResultToText(scaledSuccessChecks) {
     .join(', ')}`;
 }
 
-const checkAction = (action, rules, metricsParam, { andMode = true } = {}) => {
+const checkAction = (action, rules, metricsParam) => {
+  const orMode = rules['$or'] === true;
   const when = rules[action] || {};
   const metrics = metricsParam || [];
+  if (!metrics.length) {
+    console.warn('no metrics available yet');
+    return null;
+  }
 
   const checksConfigured = ALL_CHECKS.map(check =>
     when[check.whenField] == null ? null : check
@@ -126,9 +128,9 @@ const checkAction = (action, rules, metricsParam, { andMode = true } = {}) => {
     })
     .filter(Boolean);
 
-  const check = andMode
-    ? scaledSuccessChecks.length === checksConfigured.length
-    : scaledSuccessChecks.length > 0;
+  const check = orMode
+    ? scaledSuccessChecks.length > 0
+    : scaledSuccessChecks.length === checksConfigured.length;
 
   console.log(`info: ${action} => ${check ? 'YES' : 'NO'}`);
 
@@ -175,123 +177,164 @@ async function scale({
 
   trySendAlert({ msgTitle });
 }
+async function kill({ api, data, containerId, trySendAlert, options, reason }) {
+  const msgTitle = `Killing ${containerId}: ${reason}`;
+  console.info(msgTitle);
+
+  if (options.simulation) {
+    console.info(`simulation: Killing ${containerId}`);
+    return;
+  }
+
+  await killContainer({ api, appId: data._id, containerId });
+
+  trySendAlert({ msgTitle });
+}
 
 export const autoscale = async ({ data, options, slack, api } = {}) => {
   const { autoscaleRules } = options;
   if (!autoscaleRules) return false;
 
-  console.log('info: checking auto scaling metrics');
+  let someAction = false;
+  for await (const rules of autoscaleRules) {
+    debugger;
+    console.log('info: checking auto scaling metrics', rules);
 
-  const appLink = getAppLink(options);
-  const { runningCount, lastMetric } = data;
+    const appLink = getAppLink(options);
+    const { runningCount, lastMetric } = data;
 
-  const {
-    minContainers = MIN_CONTAINERS,
-    maxContainers = MAX_CONTAINERS,
-    containersToScale = 1,
-    channel,
-    messagePrefix,
-  } = autoscaleRules;
+    const {
+      minContainers,
+      maxContainers,
+      containersToScale = 1,
+      channel,
+      messagePrefix,
+    } = rules;
 
-  const trySendAlert = ({ msgTitle }) =>
-    trySendAlertToSlack(
-      {
-        appLink,
-        msgTitle,
-        lastMetric,
-        channel,
-        messagePrefix,
-      },
-      options,
-      slack
-    );
+    const trySendAlert = ({ msgTitle }) =>
+      trySendAlertToSlack(
+        {
+          appLink,
+          msgTitle,
+          lastMetric,
+          channel,
+          messagePrefix,
+        },
+        options,
+        slack
+      );
 
-  const loadingIndicatorSelector = '.drawer.arrow-third';
+    for await (const container of data.containers) {
+      console.log(
+        `info: checking auto scaling metrics for container ${container._id}`
+      );
+      console.log(`container`, container);
 
-  if (runningCount < minContainers) {
-    const adding = minContainers - runningCount;
-    const msg = `Below minimum of containers, adding ${adding}`;
-    console.info(`action: addingToMinimum: ${msg}`);
-    await scale({
-      api,
-      data,
-      scaleTo: minContainers,
-      adding,
-      loadingIndicatorSelector,
-      trySendAlert,
-      options,
-      reason: msg,
-    });
-    return true;
-  }
-
-  if (runningCount > maxContainers) {
-    const reducing = runningCount - maxContainers;
-    const msg = `Above maximum of containers, reducing ${reducing}`;
-    console.info(`action: reducingToMaximum: ${msg}`);
-    await scale({
-      api,
-      data,
-      scaleTo: maxContainers,
-      reducing,
-      loadingIndicatorSelector,
-      trySendAlert,
-      options,
-      reason: msg,
-    });
-    return true;
-  }
-
-  const checksToAddOrNull = checkAction(
-    'addWhen',
-    autoscaleRules,
-    data.metrics,
-    {
-      andMode: false,
+      const checksToKillOrNull = checkAction(
+        'killWhen',
+        rules,
+        container.metrics
+      );
+      if (checksToKillOrNull) {
+        await kill({
+          api,
+          data,
+          containerId: container._id,
+          trySendAlert,
+          options,
+          reason: checkResultToText(checksToKillOrNull),
+        });
+        someAction = true;
+      }
     }
-  );
-  const shouldAddContainer = runningCount < maxContainers && checksToAddOrNull;
 
-  if (shouldAddContainer) {
-    const containersToAdd =
-      runningCount + containersToScale > maxContainers ? 1 : containersToScale;
-    const nextContainerCount = runningCount + containersToAdd;
-    await scale({
-      api,
-      data,
-      scaleTo: nextContainerCount,
-      adding: containersToAdd,
-      loadingIndicatorSelector,
-      trySendAlert,
-      options,
-      reason: checkResultToText(checksToAddOrNull),
-    });
-    return true;
-  }
+    if (minContainers && runningCount < minContainers) {
+      const adding = minContainers - runningCount;
+      const msg = `Below minimum of containers, adding ${adding}`;
+      console.info(`action: addingToMinimum: ${msg}`);
+      await scale({
+        api,
+        data,
+        scaleTo: minContainers,
+        adding,
+        trySendAlert,
+        options,
+        reason: msg,
+      });
+      someAction = true;
+    }
 
-  const checksToReduceOrNull = checkAction(
-    'reduceWhen',
-    autoscaleRules,
-    data.metrics,
-    { andMode: true }
-  );
-  const shouldReduceContainer =
-    runningCount > minContainers && checksToReduceOrNull;
-  if (shouldReduceContainer) {
-    const containersToReduce =
-      runningCount - containersToScale < minContainers ? 1 : containersToScale;
-    const nextContainerCount = runningCount - containersToReduce;
-    await scale({
-      api,
-      data,
-      scaleTo: nextContainerCount,
-      reducing: containersToReduce,
-      loadingIndicatorSelector,
-      trySendAlert,
-      options,
-      reason: checkResultToText(checksToReduceOrNull),
+    if (maxContainers && runningCount > maxContainers) {
+      const reducing = runningCount - maxContainers;
+      const msg = `Above maximum of containers, reducing ${reducing}`;
+      console.info(`action: reducingToMaximum: ${msg}`);
+      await scale({
+        api,
+        data,
+        scaleTo: maxContainers,
+        reducing,
+        trySendAlert,
+        options,
+        reason: msg,
+      });
+      someAction = true;
+    }
+
+    const checksToAddOrNull = checkAction('addWhen', rules, data.metrics, {
+      andMode: false,
     });
-    return true;
+    if (checksToAddOrNull && !maxContainers) {
+      throw new Error('maxContainers is not defined');
+    }
+    const shouldAddContainer =
+      runningCount < maxContainers && checksToAddOrNull;
+
+    if (shouldAddContainer) {
+      const containersToAdd =
+        runningCount + containersToScale > maxContainers
+          ? 1
+          : containersToScale;
+      const nextContainerCount = runningCount + containersToAdd;
+      await scale({
+        api,
+        data,
+        scaleTo: nextContainerCount,
+        adding: containersToAdd,
+        trySendAlert,
+        options,
+        reason: checkResultToText(checksToAddOrNull),
+      });
+      someAction = true;
+    }
+
+    const checksToReduceOrNull = checkAction(
+      'reduceWhen',
+      rules,
+      data.metrics,
+      { andMode: true }
+    );
+    if (checksToAddOrNull && !minContainers) {
+      throw new Error('minContainers is not defined');
+    }
+    const shouldReduceContainer =
+      runningCount > minContainers && checksToReduceOrNull;
+    if (shouldReduceContainer) {
+      const containersToReduce =
+        runningCount - containersToScale < minContainers
+          ? 1
+          : containersToScale;
+      const nextContainerCount = runningCount - containersToReduce;
+      await scale({
+        api,
+        data,
+        scaleTo: nextContainerCount,
+        reducing: containersToReduce,
+        trySendAlert,
+        options,
+        reason: checkResultToText(checksToReduceOrNull),
+      });
+      someAction = true;
+    }
   }
-  return false;
+  return someAction;
 };

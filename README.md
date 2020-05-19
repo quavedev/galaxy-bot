@@ -77,12 +77,13 @@ Most fields are self-explanatory.
       "sessionsByHost": 5
     }
   },
-  "autoscaleRules": {
+  "autoscaleRules": [{
     "channel": "#auto-scaling",
     "containersToScale": 2,
     "minContainers": 2,
     "maxContainers": 10,
     "addWhen": {
+      "$or": true,
       "cpuPercentageAbove": 50,
       "memoryPercentageAbove":  70,
       "connectionsAbove":  50
@@ -92,7 +93,7 @@ Most fields are self-explanatory.
       "memoryPercentageBelow": 25,
       "connectionsBelow": 30
     }
-  },
+  }],
 }
 
 ```
@@ -106,20 +107,20 @@ The autoscaling (`autoscaleRules`) behavior is meant to adjust smartly the conta
 - Three actions are supported:
   - `add` containers (conditions are configured on `addWhen` json key);
   - `reduce` containers (conditions are configured on `reduceWhen` json key);
+  - `kill` containers (conditions are configured on `killWhen` json key);
 
 - The conditions available are: "[cpuPercentage|memoryPercentage|connections][Above|Below]". Check out to which values refer for each: [from Galaxy Panel](https://user-images.githubusercontent.com/2581993/68477766-26baa380-0226-11ea-81da-c0b635f717d6.png).
 
 - The conditions express the property average on the active containers. The active containers are
  those that are running, the ones starting or stopping are ignored.
 
-- Multiple conditions can be informed and they are evaluated in different ways depending on the
- action
-  - `add` action evaluates with `OR`, one match is enough to add new container
-  - `reduce` action evaluates with `AND`, one miss match is enough to not remove one container
+- Multiple conditions can be informed and they are evaluated by default as and, it means, all must match to execute the action. You can change this behavior adding `"$or": true` to your rule.
 
-- The `addWhen` and `reduceWhen` behaviors check to not go beyond a containers count range. This range is described by the `minContainers` and `maxContainers` configuration.
+- The `addWhen` and `reduceWhen` behaviors check to not go beyond a containers count range. This range is described by the `minContainers` and `maxContainers` configuration. They are required if you are using `addWhen` or `reduceWhen`.
 
 - The `addWhen` and `reduceWhen` behaviors won't run if a scaling is happening. If any other condition passes it will run on the next run.
+
+- The `killWhen` will run if a scaling is happening. If any other condition passes it will run on the next run.
 
 - An slack message is sent anytime a scaling behavior is triggered if you set a Slack Webhook, the
  messages are sent to the default webhook channel. You will receive messages like this

@@ -48,6 +48,20 @@ export const scaleApp = async ({ api, appId, containerCount }) => {
   );
 };
 
+export const killContainer = async ({ api, appId, containerId }) => {
+  return api.request(
+    `
+    mutation KillContainer($appId:String!, $containerId:String!)
+    {
+      killContainer(appId:$appId, containerId:$containerId) {
+        status
+      }
+    }
+    `,
+    { appId, containerId }
+  );
+};
+
 export const getMetrics = async ({ api, options }) => {
   // sometimes we get -1 metrics
   const limit = (options.variables.limit || 5) + 1;
