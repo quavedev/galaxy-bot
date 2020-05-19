@@ -22,21 +22,21 @@
     "quave-check": "npm run quave-eslint && npm run quave-prettier"
   },
   "dependencies": {
-    "@babel/core": "^7.5.5",
-    "@babel/node": "^7.5.5",
-    "@babel/polyfill": "^7.4.4",
-    "@babel/preset-env": "^7.5.5",
-    "fs-extra": "^8.1.0",
+    "@babel/core": "^7.9.6",
+    "@babel/node": "^7.8.7",
+    "@babel/polyfill": "^7.8.7",
+    "@babel/preset-env": "^7.9.6",
+    "fs-extra": "^9.0.0",
     "graphql-request": "^1.8.2",
     "lodash.merge": "^4.6.2",
     "request-promise": "^4.2.5",
     "slack-notify": "^0.1.7",
-    "yargs": "^13.3.0"
+    "yargs": "^15.3.1"
   },
   "devDependencies": {
-    "@babel/cli": "^7.5.5",
+    "@babel/cli": "^7.8.4",
     "@quave/eslint-config-quave": "^1.0.1-beta.1",
-    "nodemon": "^1.19.1"
+    "nodemon": "^2.0.4"
   },
   "eslintConfig": {
     "extends": [
